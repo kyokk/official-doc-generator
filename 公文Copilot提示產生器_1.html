@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>公文 Copilot 提示產生器</title>
+<style>
+/* System font stack - no external loading */
+/* ── Light theme (default) ── */
+:root {
+  --bg: #f7f8fc;
+  --bg2: #ffffff;
+  --bg3: #f0f2f8;
+  --border: rgba(0,0,0,0.09);
+  --border2: rgba(0,0,0,0.14);
+  --text: #1a1d2e;
+  --text-mid: #4a5070;
+  --text-dim: #9298b0;
+  --accent: #2563eb;
+  --accent2: #6d4ef5;
+  --gold: #b45309;
+  --gold-dim: rgba(180,83,9,0.1);
+  --green: #0d7a50;
+  --green-dim: rgba(13,122,80,0.1);
+  --red: #c0392b;
+  --red-dim: rgba(192,57,43,0.1);
+  --glow: 0 0 24px rgba(37,99,235,0.12);
+  --grid-line: rgba(37,99,235,0.04);
+}
+
+/* ── Dark theme ── */
+body.dark {
+  --bg: #0f1117;
+  --bg2: #161b27;
+  --bg3: #1e2538;
+  --border: rgba(255,255,255,0.08);
+  --border2: rgba(255,255,255,0.14);
+  --text: #e8eaf0;
+  --text-mid: #9ba3b8;
+  --text-dim: #5a6278;
+  --accent: #4f8ef7;
+  --accent2: #7c6af7;
+  --gold: #e6b84a;
+  --gold-dim: rgba(230,184,74,0.15);
+  --green: #3ecf8e;
+  --green-dim: rgba(62,207,142,0.12);
+  --red: #e05c5c;
+  --red-dim: rgba(224,92,92,0.12);
+  --glow: 0 0 24px rgba(79,142,247,0.15);
+  --grid-line: rgba(79,142,247,0.03);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Microsoft JhengHei', 'PingFang TC', 'Noto Sans TC', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: background 0.25s, color 0.25s;
+}
+
+/* Subtle grid background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.wrap {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 40px 32px 60px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Header ── */
+header {
+  margin-bottom: 40px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.header-left {}
+
+.eyebrow {
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eyebrow::before {
+  content: '';
+  width: 24px;
+  height: 1px;
+  background: var(--accent);
+  display: inline-block;
+}
+
+h1 {
+  font-family: 'Microsoft JhengHei', 'PingFang TC', serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+h1 em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.header-desc {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-mid);
+  line-height: 1.7;
+}
+
+.copilot-badge {
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #0078d4, #5c2d91);
+  border-radius: 10px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: white;
+  letter-spacing: 0.04em;
+  box-shadow: 0 4px 20px rgba(0,120,212,0.3);
+  white-space: nowrap;
+}
+
+.copilot-badge svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+/* ── Tab switcher ── */
+.tab-row {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border2);
+  margin-bottom: 32px;
+}
+
+.tab-btn {
+  padding: 12px 24px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-family: 'Microsoft JhengHei', 'PingFang TC', serif;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: -1px;
+}
+
+.tab-btn:hover { color: var(--text-mid); }
+
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.tab-icon {
+  font-size: 16px;
+}
+
+/* ── Panels ── */
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── Section card ── */
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.card-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-title {
+  font-family: 'Microsoft JhengHei', 'PingFang TC', serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-mid);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-title .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.card-body { padding: 20px; }
+
+textarea, input[type="text"] {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  color: var(--text);
+  font-family: 'Microsoft JhengHei', 'PingFang TC', 'Noto Sans TC', sans-serif;
+  font-size: 14px;
+  line-height: 1.85;
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.2s;
+}
+
+textarea:focus, input[type="text"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(79,142,247,0.1);
+}
+
+textarea::placeholder, input::placeholder {
+  color: var(--text-dim);
+}
+
+/* ── Mode chips ── */
+.chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  padding: 7px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--text-mid);
+  font-size: 12px;
+  font-family: 'Microsoft JhengHei', 'PingFang TC', 'Noto Sans TC', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+}
+
+.chip:hover { border-color: var(--accent); color: var(--text); }
+
+.chip.active {
+  background: rgba(79,142,247,0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Form grid ── */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.form-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-item label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.form-item input, .form-item select, .form-item textarea {
+  font-size: 13px;
+  padding: 10px 12px;
+}
+
+select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: 'Microsoft JhengHei', 'PingFang TC', 'Noto Sans TC', sans-serif;
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235a6278' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  transition: border-color 0.2s;
+}
+
+select:focus { border-color: var(--accent); }
+select option { background: var(--bg3); }
+
+/* ── Checklist ── */
+.check-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-mid);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s;
+}
+
+.check-item:hover { color: var(--text); }
+
+.check-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── Generate button ── */
+.btn-gen {
+  width: 100%;
+  padding: 15px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border: none;
+  border-radius: 10px;
+  color: white;
+  font-family: 'Microsoft JhengHei', 'PingFang TC', serif;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 4px 20px rgba(79,142,247,0.25);
+  margin-bottom: 20px;
+}
+
+.btn-gen:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 28px rgba(79,142,247,0.35);
+}
+
+.btn-gen:active { transform: translateY(0); }
+
+/* ── Output area ── */
+.output-wrap {
+  display: none;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.output-wrap.visible { display: flex; }
+
+.output-card {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.output-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+}
+
+.output-header {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.output-label {
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.output-label .pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.btn-copy {
+  background: transparent;
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 5px 14px;
+  color: var(--text-mid);
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-copy:hover {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.btn-copy.copied {
+  border-color: var(--green);
+  color: var(--green);
+  background: var(--green-dim);
+}
+
+.output-body {
+  padding: 20px;
+}
+
+.prompt-text {
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Highlight syntax in prompt */
+.prompt-text .kw { color: var(--accent); font-weight: 600; }
+.prompt-text .val { color: var(--gold); }
+.prompt-text .sec { color: var(--green); }
+.prompt-text .note { color: var(--text-mid); font-style: italic; }
+
+/* ── How-to steps ── */
+.steps-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.steps-title {
+  font-family: 'Microsoft JhengHei', 'PingFang TC', serif;
+  font-size: 13px;
+  color: var(--text-mid);
+  margin-bottom: 16px;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.step {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.step-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(79,142,247,0.15);
+  border: 1px solid rgba(79,142,247,0.3);
+  color: var(--accent);
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.step-text {
+  font-size: 13px;
+  color: var(--text-mid);
+  line-height: 1.7;
+}
+
+.step-text strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* ── Divider ── */
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 8px 0;
+}
+
+/* ── Footer ── */
+footer {
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+footer .f-l {
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+}
+
+footer .f-r {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* ── Char counter ── */
+.char-count {
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: right;
+  margin-top: 6px;
+}
+
+/* ── Tip box ── */
+.tip {
+  background: rgba(79,142,247,0.07);
+  border: 1px solid rgba(79,142,247,0.2);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--text-mid);
+  line-height: 1.7;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.tip-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+
+/* animation */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.output-wrap.visible { animation: fadeUp 0.3s ease; }
+
+/* ── Theme toggle ── */
+.theme-toggle {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  z-index: 999;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 24px;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-mid);
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  letter-spacing: 0.05em;
+  transition: all 0.2s;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  user-select: none;
+}
+
+.theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.theme-toggle .toggle-track {
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--border2);
+  position: relative;
+  transition: background 0.25s;
+  flex-shrink: 0;
+}
+
+body.dark .theme-toggle .toggle-track {
+  background: var(--accent);
+}
+
+.theme-toggle .toggle-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.25s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+body.dark .theme-toggle .toggle-thumb {
+  transform: translateX(14px);
+}
+
+  .form-grid { grid-template-columns: 1fr; }
+  h1 { font-size: 22px; }
+  .wrap { padding: 24px 16px 48px; }
+  .tab-btn { padding: 10px 14px; font-size: 13px; }
+  .copilot-badge { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- Theme toggle -->
+<button class="theme-toggle" id="themeToggle" title="切換深色／淺色模式">
+  <span id="themeIcon">🌙</span>
+  <div class="toggle-track"><div class="toggle-thumb"></div></div>
+  <span id="themeLabel">深色</span>
+</button>
+
+<div class="wrap">
+
+  <!-- Header -->
+  <header>
+    <div class="header-left">
+      <div class="eyebrow">MS Copilot · Prompt Generator</div>
+      <h1>公文 <em>Copilot</em> 提示產生器</h1>
+      <p class="header-desc">為 Microsoft Copilot 自動生成最佳化提示語，提升公文撰寫與改寫品質</p>
+    </div>
+    <div class="copilot-badge">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" fill="white" opacity="0.3"/>
+        <path d="M17.6 6.31l-1.5 1.5A5.98 5.98 0 0112 6a6 6 0 00-6 6 5.98 5.98 0 001.81 4.34l-1.5 1.5A8 8 0 0112 4a7.97 7.97 0 015.6 2.31zM6.4 17.69l1.5-1.5A5.98 5.98 0 0012 18a6 6 0 006-6 5.98 5.98 0 00-1.81-4.34l1.5-1.5A8 8 0 0112 20a7.97 7.97 0 01-5.6-2.31z" fill="white"/>
+      </svg>
+      Microsoft Copilot
+    </div>
+  </header>
+
+  <!-- Tab switcher -->
+  <div class="tab-row">
+    <button class="tab-btn active" data-tab="rewrite">
+      <span class="tab-icon">✏️</span> 改寫建議提示
+    </button>
+    <button class="tab-btn" data-tab="draft">
+      <span class="tab-icon">📄</span> 完整公文起草提示
+    </button>
+  </div>
+
+  <!-- ══════════ TAB 1: 改寫建議 ══════════ -->
+  <div class="tab-panel active" id="tab-rewrite">
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="dot"></span>貼入原始公文草稿</div>
+        <span style="font-size:11px;color:var(--text-dim)">此內容將嵌入 Prompt 中</span>
+      </div>
+      <div class="card-body">
+        <textarea id="r-draft" rows="7" placeholder="請貼入需要改寫的公文草稿內容…&#10;&#10;例如：&#10;主旨：為辦理本校資安教育訓練事宜，請各單位配合辦理，請查照。&#10;說明：一、訓練時間為113年3月15日上午9時…"></textarea>
+        <div class="char-count" id="r-count">0 字</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="dot"></span>改寫方向</div>
+      </div>
+      <div class="card-body">
+        <div class="chip-row" id="r-mode-row">
+          <button class="chip active" data-mode="concise">✂️ 精簡用語</button>
+          <button class="chip" data-mode="formal">🎖️ 正式語體</button>
+          <button class="chip" data-mode="logic">🧩 邏輯結構</button>
+          <button class="chip" data-mode="full">🔄 全面改寫</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="dot"></span>附加要求（選填）</div>
+      </div>
+      <div class="card-body">
+        <div class="check-row">
+          <label class="check-item"><input type="checkbox" id="r-chk-format"> 檢查主旨／說明／辦法格式</label>
+          <label class="check-item"><input type="checkbox" id="r-chk-polite"> 確認稱謂與禮貌用語</label>
+          <label class="check-item"><input type="checkbox" id="r-chk-num"> 段落編號規範（一、（一）1.⑴）</label>
+          <label class="check-item"><input type="checkbox" id="r-chk-score"> 附上品質評分</label>
+          <label class="check-item"><input type="checkbox" id="r-chk-compare" checked> 提供改前改後對照</label>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn-gen" id="r-gen-btn">
+      <span>⚡</span> 產生 Copilot 改寫提示
+    </button>
+
+    <div class="output-wrap" id="r-output">
+      <div class="output-card">
+        <div class="output-header">
+          <div class="output-label"><span class="pulse"></span>改寫建議 Prompt</div>
+          <button class="btn-copy" id="r-copy-btn">📋 複製提示</button>
+        </div>
+        <div class="output-body">
+          <div class="prompt-text" id="r-prompt-text"></div>
+        </div>
+      </div>
+
+      <div class="steps-card">
+        <div class="steps-title">📌 如何使用此 Prompt</div>
+        <div class="step-list">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">開啟 <strong>Microsoft 365 Copilot</strong>（Word、Teams 或 Copilot.microsoft.com）</div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">點擊上方「<strong>複製提示</strong>」按鈕，將 Prompt 完整複製</div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">貼入 Copilot 對話框並送出，即可獲得改寫建議</div>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">若結果不滿意，可追加說明如「請再更精簡」或「請保留原始段落編號」</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-rewrite -->
+
+  <!-- ══════════ TAB 2: 完整公文起草 ══════════ -->
+  <div class="tab-panel" id="tab-draft">
+
+    <div class="tip">
+      <span class="tip-icon">💡</span>
+      <span>提供公文的重點摘要（事由、對象、要求事項等），本工具將產生最佳化的 Copilot Prompt，讓 Copilot 協助你寫出完整正式公文。</span>
+    </div>
+    <div style="height:16px"></div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="dot"></span>公文基本資訊</div>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="form-item">
+            <label>公文類型</label>
+            <select id="d-type">
+              <option value="函">函（平行機關）</option>
+              <option value="開會通知單">開會通知單</option>
+              <option value="簽">簽（陳核簽呈）</option>
+              <option value="公告">公告</option>
+              <option value="便函">便函（不拘格式）</option>
+              <option value="通知">通知單</option>
+            </select>
+          </div>
+          <div class="form-item">
+            <label>發文機關／單位</label>
+            <input type="text" id="d-sender" placeholder="例：國立○○學校教務處">
+          </div>
+          <div class="form-item">
+            <label>收文對象</label>
+            <input type="text" id="d-receiver" placeholder="例：各系所、全體教職員">
+          </div>
+          <div class="form-item">
+            <label>語氣正式程度</label>
+            <select id="d-tone">
+              <option value="standard">標準公文語體</option>
+              <option value="strict">較嚴謹（上行文）</option>
+              <option value="mild">較平和（平行文）</option>
+              <option value="inform">宣達通知語氣</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="dot"></span>公文事由摘要</div>
+      </div>
+      <div class="card-body">
+        <textarea id="d-summary" rows="5" placeholder="請用白話文描述公文的重點，不需要考慮格式，只需寫清楚要做什麼事：&#10;&#10;例：要通知各單位，本年度資安教育訓練訂於3月15日上午9點在行政大樓302會議室舉行，需要各單位主管或指定人員出席，缺席者需事先請假，訓練時數2小時計入年度訓練紀錄。"></textarea>
+        <div class="char-count" id="d-count">0 字</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="dot"></span>選擇公文結構要素</div>
+      </div>
+      <div class="card-body">
+        <div class="check-row">
+          <label class="check-item"><input type="checkbox" id="d-chk-subject" checked> 主旨</label>
+          <label class="check-item"><input type="checkbox" id="d-chk-explain" checked> 說明</label>
+          <label class="check-item"><input type="checkbox" id="d-chk-action" checked> 辦法</label>
+          <label class="check-item"><input type="checkbox" id="d-chk-attach"> 附件清單</label>
+          <label class="check-item"><input type="checkbox" id="d-chk-deadline"> 請求回覆／截止日期</label>
+          <label class="check-item"><input type="checkbox" id="d-chk-alt"> 提供備選版本</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="dot"></span>額外要求（選填）</div>
+      </div>
+      <div class="card-body">
+        <textarea id="d-extra" rows="2" placeholder="例：段落請使用「一、（一）1.⑴」規範；用語請符合教育部公文格式；請避免使用被動語態…"></textarea>
+      </div>
+    </div>
+
+    <button class="btn-gen" id="d-gen-btn">
+      <span>⚡</span> 產生 Copilot 起草提示
+    </button>
+
+    <div class="output-wrap" id="d-output">
+      <div class="output-card">
+        <div class="output-header">
+          <div class="output-label"><span class="pulse"></span>公文起草 Prompt</div>
+          <button class="btn-copy" id="d-copy-btn">📋 複製提示</button>
+        </div>
+        <div class="output-body">
+          <div class="prompt-text" id="d-prompt-text"></div>
+        </div>
+      </div>
+
+      <div class="steps-card">
+        <div class="steps-title">📌 如何使用此 Prompt</div>
+        <div class="step-list">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">開啟 <strong>Microsoft Word</strong> 並啟動右側 Copilot 面板，或前往 <strong>Copilot.microsoft.com</strong></div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">複製上方 Prompt 並貼入 Copilot 對話框</div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">Copilot 將輸出完整格式公文，可直接複製進公文系統或 Word 範本</div>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">如需調整，追加說明例如「請加入緊急程度說明」或「說明段落請拆為三點」</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-draft -->
+
+  <footer>
+    <div class="f-l">公文 COPILOT 提示產生器 · 單機版 · 無需網路</div>
+    <div class="f-r">For Microsoft 365 Copilot</div>
+  </footer>
+
+</div><!-- /wrap -->
+
+<script>
+// ─── Safe storage (file:// 環境下 localStorage 可能被封鎖) ───
+const safeStorage = {
+  get(key) { try { return localStorage.getItem(key); } catch(e) { return null; } },
+  set(key, val) { try { localStorage.setItem(key, val); } catch(e) {} }
+};
+
+// ─── Theme toggle ───
+const themeToggle = document.getElementById('themeToggle');
+const themeIcon   = document.getElementById('themeIcon');
+const themeLabel  = document.getElementById('themeLabel');
+
+function setTheme(dark) {
+  document.body.classList.toggle('dark', dark);
+  themeIcon.textContent  = dark ? '☀️' : '🌙';
+  themeLabel.textContent = dark ? '淺色' : '深色';
+  safeStorage.set('theme', dark ? 'dark' : 'light');
+}
+
+themeToggle.addEventListener('click', () => {
+  setTheme(!document.body.classList.contains('dark'));
+});
+
+// Restore saved preference
+setTheme(safeStorage.get('theme') === 'dark');
+
+// ─── Tab switching ───
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ─── Mode chips (single-select) ───
+document.querySelectorAll('#r-mode-row .chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#r-mode-row .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+  });
+});
+
+// ─── Char counters ───
+function watchCount(textareaId, countId) {
+  const ta = document.getElementById(textareaId);
+  const ct = document.getElementById(countId);
+  ta.addEventListener('input', () => {
+    ct.textContent = ta.value.length + ' 字';
+  });
+}
+watchCount('r-draft', 'r-count');
+watchCount('d-summary', 'd-count');
+
+// ─── Copy button ───
+function setupCopy(btnId, sourceId) {
+  document.getElementById(btnId).addEventListener('click', function() {
+    const text = document.getElementById(sourceId).innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      this.textContent = '✅ 已複製';
+      this.classList.add('copied');
+      setTimeout(() => {
+        this.textContent = '📋 複製提示';
+        this.classList.remove('copied');
+      }, 2200);
+    });
+  });
+}
+setupCopy('r-copy-btn', 'r-prompt-text');
+setupCopy('d-copy-btn', 'd-prompt-text');
+
+// ─── REWRITE prompt generator ───
+const REWRITE_MODES = {
+  concise: {
+    label: '精簡用語',
+    instruction: `【改寫方向：精簡化】
+請聚焦於以下改寫重點：
+- 刪除冗詞贅字（如「有關」「茲因」重複出現時）
+- 縮短過長複合句，每句以不超過 50 字為原則
+- 去除語意重複的段落
+- 保留原意完整，勿刪除關鍵資訊`
+  },
+  formal: {
+    label: '正式語體',
+    instruction: `【改寫方向：正式化】
+請聚焦於以下改寫重點：
+- 口語詞彙替換為正式公文用語（如「要求」→「請」、「因為」→「茲因」、「已經」→「業已」）
+- 統一為公文語體，避免主動式祈使句
+- 適當使用公文慣用結語（「請查照」「請惠予辦理」「請查照轉知」）
+- 符合中華民國政府公文格式`
+  },
+  logic: {
+    label: '邏輯結構',
+    instruction: `【改寫方向：邏輯強化】
+請聚焦於以下改寫重點：
+- 確保「主旨」能完整概括公文目的（應包含事由與結語）
+- 「說明」各點之間應具邏輯順序（時間、因果或重要性排序）
+- 「辦法」應明確列出被受文者的具體行動事項
+- 段落層次統一使用「一、（一）1.⑴」格式
+- 移除邏輯跳躍與前後矛盾處`
+  },
+  full: {
+    label: '全面改寫',
+    instruction: `【改寫方向：全面改寫】
+請同時進行以下三個層面的改寫：
+（一）格式層面：確認主旨／說明／辦法結構完整，段落層次符合規範
+（二）語言層面：統一使用正式公文語體，刪除冗詞贅字
+（三）邏輯層面：確認各段落邏輯清晰，事由與辦法對應明確`
+  }
+};
+
+document.getElementById('r-gen-btn').addEventListener('click', () => {
+  const draft = document.getElementById('r-draft').value.trim();
+  if (!draft) { alert('請先貼入公文草稿內容。'); return; }
+
+  const mode = document.querySelector('#r-mode-row .chip.active')?.dataset.mode || 'concise';
+  const modeInfo = REWRITE_MODES[mode];
+
+  const chkFormat   = document.getElementById('r-chk-format').checked;
+  const chkPolite   = document.getElementById('r-chk-polite').checked;
+  const chkNum      = document.getElementById('r-chk-num').checked;
+  const chkScore    = document.getElementById('r-chk-score').checked;
+  const chkCompare  = document.getElementById('r-chk-compare').checked;
+
+  let extras = [];
+  if (chkFormat)  extras.push('- 檢查公文是否具備「主旨」「說明」「辦法」三段結構，並指出缺漏或多餘的部分');
+  if (chkPolite)  extras.push('- 確認稱謂用語（如「貴機關」「本單位」）與禮貌結語是否恰當');
+  if (chkNum)     extras.push('- 確認段落層次編號符合「一、（一）1.⑴」規範，若有錯誤請一併修正');
+  if (chkScore)   extras.push('- 在改寫結果後，附上格式（0-100）、語言（0-100）、邏輯（0-100）三項品質評分及簡短說明');
+  if (chkCompare) extras.push('- 提供「修改前」與「修改後」的段落對照，清楚標示改動之處');
+
+  const extraBlock = extras.length > 0
+    ? `\n\n【附加要求】\n${extras.join('\n')}` : '';
+
+  const prompt =
+`你是台灣政府機關公文審稿專家，熟悉《文書處理手冊》及各機關公文撰寫規範，請使用繁體中文回覆。
+
+${modeInfo.instruction}
+${extraBlock}
+
+【原始公文草稿】
+---
+${draft}
+---
+
+請依上述方向提供完整改寫版本，並簡要說明主要修改之處（3至5點）。`;
+
+  document.getElementById('r-prompt-text').textContent = prompt;
+  const out = document.getElementById('r-output');
+  out.classList.add('visible');
+  out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+
+// ─── DRAFT prompt generator ───
+const TONE_MAP = {
+  standard: '標準公文語體，依《文書處理手冊》規範',
+  strict:   '較嚴謹正式之上行文語氣（陳報長官），措辭謙遜恭敬',
+  mild:     '平和的平行文語氣（機關間往來），措辭禮貌不失莊重',
+  inform:   '宣達通知語氣（通知受文者配合事項），語氣明確清楚'
+};
+
+document.getElementById('d-gen-btn').addEventListener('click', () => {
+  const summary  = document.getElementById('d-summary').value.trim();
+  const docType  = document.getElementById('d-type').value;
+  const sender   = document.getElementById('d-sender').value.trim();
+  const receiver = document.getElementById('d-receiver').value.trim();
+  const tone     = document.getElementById('d-tone').value;
+  const extra    = document.getElementById('d-extra').value.trim();
+
+  if (!summary) { alert('請先填寫公文事由摘要。'); return; }
+
+  const chkSubject  = document.getElementById('d-chk-subject').checked;
+  const chkExplain  = document.getElementById('d-chk-explain').checked;
+  const chkAction   = document.getElementById('d-chk-action').checked;
+  const chkAttach   = document.getElementById('d-chk-attach').checked;
+  const chkDeadline = document.getElementById('d-chk-deadline').checked;
+  const chkAlt      = document.getElementById('d-chk-alt').checked;
+
+  const sections = [];
+  if (chkSubject)  sections.push('「主旨」：以一句話概括本文目的與結語（勿換行，末以「請查照」或適當結語收尾）');
+  if (chkExplain)  sections.push('「說明」：分點說明事由背景、相關規定或辦理依據，層次使用「一、（一）1.⑴」格式');
+  if (chkAction)   sections.push('「辦法」：明確列出受文者須配合辦理之事項，動作應具體可執行');
+  if (chkAttach)   sections.push('「附件」：列出隨文附上之相關文件清單（若無附件則省略此項）');
+  if (chkDeadline) sections.push('「截止期限或回覆要求」：若有截止日期或需要回覆，請在辦法段明確說明');
+
+  const structBlock = sections.length > 0
+    ? `\n\n【公文結構要求】\n請依序撰寫下列各段：\n${sections.map(s => '- ' + s).join('\n')}` : '';
+
+  const altBlock = chkAlt
+    ? '\n\n【備選版本】\n請在主版本後再提供一個備選版本，語氣或結構略有不同，供參考比較。' : '';
+
+  const extraBlock = extra
+    ? `\n\n【額外要求】\n${extra}` : '';
+
+  const senderLine   = sender   ? `\n- 發文機關／單位：${sender}` : '';
+  const receiverLine = receiver ? `\n- 收文對象：${receiver}`     : '';
+
+  const prompt =
+`你是台灣政府機關公文撰寫專家，熟悉《文書處理手冊》及公文格式規範，請使用繁體中文撰寫正式公文。
+
+【公文基本資訊】
+- 公文類型：${docType}${senderLine}${receiverLine}
+- 語氣要求：${TONE_MAP[tone]}
+${structBlock}
+
+【公文事由摘要（請依此內容起草）】
+---
+${summary}
+---
+${altBlock}
+${extraBlock}
+
+請撰寫符合上述規範的完整正式公文，格式清晰、用語得當、結構完整。`;
+
+  document.getElementById('d-prompt-text').textContent = prompt;
+  const out = document.getElementById('d-output');
+  out.classList.add('visible');
+  out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>公文改寫建議工具</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1a1410;
+    --ink-mid: #3d2f24;
+    --ink-light: #6b5a4e;
+    --paper: #f5f0e8;
+    --paper-warm: #ede6d5;
+    --paper-dark: #e0d5c0;
+    --red: #c0392b;
+    --red-light: #e74c3c;
+    --gold: #b5860d;
+    --gold-light: #d4a017;
+    --teal: #2a6b6b;
+    --teal-light: #3a8f8f;
+    --border: rgba(26,20,16,0.15);
+    --shadow: 0 4px 24px rgba(26,20,16,0.12);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Noto Sans TC', sans-serif;
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* Paper texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 28px, rgba(26,20,16,0.04) 28px, rgba(26,20,16,0.04) 29px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Red side border like traditional documents */
+  body::after {
+    content: '';
+    position: fixed;
+    left: 0; top: 0; bottom: 0;
+    width: 6px;
+    background: linear-gradient(180deg, var(--red) 0%, #8b1a11 100%);
+    z-index: 100;
+  }
+
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 40px 40px 50px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 2px solid var(--ink);
+    position: relative;
+  }
+
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 0; right: 0;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .header-title {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .header-title .badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--red);
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  h1 {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: 0.05em;
+    line-height: 1.2;
+  }
+
+  h1 span {
+    color: var(--red);
+  }
+
+  .header-title .subtitle {
+    font-size: 13px;
+    color: var(--ink-light);
+    margin-top: 4px;
+    letter-spacing: 0.03em;
+  }
+
+  .header-stamp {
+    text-align: center;
+    border: 2px solid var(--red);
+    padding: 8px 14px;
+    border-radius: 4px;
+    color: var(--red);
+    font-family: 'Noto Serif TC', serif;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    transform: rotate(2deg);
+    opacity: 0.75;
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+
+  /* API Key Section */
+  .api-section {
+    background: var(--paper-warm);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+    padding: 14px 18px;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .api-section label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--gold);
+    white-space: nowrap;
+    letter-spacing: 0.05em;
+  }
+
+  .api-section input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    padding: 4px 2px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .api-section input:focus {
+    border-bottom-color: var(--gold);
+  }
+
+  .api-section input::placeholder {
+    color: var(--ink-light);
+    opacity: 0.6;
+  }
+
+  /* Main layout */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+
+  .panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--ink);
+    color: var(--paper);
+    border-radius: 4px 4px 0 0;
+  }
+
+  .panel-header.teal { background: var(--teal); }
+
+  .panel-label {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+  }
+
+  .panel-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    opacity: 0.65;
+    letter-spacing: 0.05em;
+  }
+
+  textarea {
+    width: 100%;
+    flex: 1;
+    min-height: 280px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    background: white;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 14px;
+    line-height: 2;
+    color: var(--ink);
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  textarea:focus { border-color: var(--ink-mid); }
+  textarea::placeholder { color: #b0a898; }
+
+  /* Result panel */
+  .result-panel {
+    min-height: 280px;
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    background: white;
+    padding: 16px;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 14px;
+    line-height: 2;
+    color: var(--ink);
+    position: relative;
+    overflow: auto;
+  }
+
+  .result-placeholder {
+    color: #b0a898;
+    font-style: normal;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 240px;
+    gap: 10px;
+    text-align: center;
+  }
+
+  .result-placeholder .icon {
+    font-size: 32px;
+    opacity: 0.3;
+  }
+
+  .result-placeholder p {
+    font-size: 13px;
+    opacity: 0.7;
+    line-height: 1.6;
+  }
+
+  /* Options section */
+  .options-section {
+    margin-bottom: 24px;
+  }
+
+  .options-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-light);
+    margin-bottom: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .mode-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  .mode-btn {
+    padding: 10px 8px;
+    border: 1.5px solid var(--border);
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mode-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--ink);
+    transform: scaleY(0);
+    transform-origin: bottom;
+    transition: transform 0.2s;
+    z-index: 0;
+  }
+
+  .mode-btn.active::before { transform: scaleY(1); }
+
+  .mode-btn .mode-icon {
+    font-size: 20px;
+    display: block;
+    margin-bottom: 4px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .mode-btn .mode-name {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 12px;
+    font-weight: 600;
+    display: block;
+    position: relative;
+    z-index: 1;
+    color: var(--ink);
+    transition: color 0.2s;
+    letter-spacing: 0.05em;
+  }
+
+  .mode-btn .mode-desc {
+    font-size: 10px;
+    color: var(--ink-light);
+    display: block;
+    margin-top: 2px;
+    position: relative;
+    z-index: 1;
+    transition: color 0.2s;
+    line-height: 1.4;
+  }
+
+  .mode-btn.active .mode-name,
+  .mode-btn.active .mode-desc {
+    color: var(--paper);
+  }
+
+  .mode-btn:hover:not(.active) {
+    border-color: var(--ink);
+  }
+
+  /* Additional options */
+  .add-options {
+    margin-top: 14px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .check-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--ink-mid);
+    user-select: none;
+  }
+
+  .check-item input[type="checkbox"] {
+    accent-color: var(--red);
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+  }
+
+  /* Action bar */
+  .action-bar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+
+  .btn-primary {
+    background: var(--red);
+    color: white;
+    border: none;
+    padding: 13px 32px;
+    font-family: 'Noto Serif TC', serif;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 2px 8px rgba(192,57,43,0.3);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: #a93226;
+    box-shadow: 0 4px 16px rgba(192,57,43,0.4);
+    transform: translateY(-1px);
+  }
+
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--ink-mid);
+    border: 1.5px solid var(--border);
+    padding: 12px 20px;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+    letter-spacing: 0.05em;
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    border-color: var(--ink);
+    color: var(--ink);
+  }
+
+  .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .char-count {
+    margin-left: auto;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-light);
+  }
+
+  /* Loading */
+  .loading-indicator {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink-mid);
+    font-size: 13px;
+  }
+
+  .loading-indicator.active { display: flex; }
+
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--red);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Diff highlight */
+  .diff-add {
+    background: rgba(42,107,107,0.12);
+    border-bottom: 1px solid var(--teal);
+    color: var(--teal);
+  }
+
+  .diff-del {
+    background: rgba(192,57,43,0.08);
+    text-decoration: line-through;
+    color: var(--red);
+    opacity: 0.6;
+  }
+
+  /* Analysis section */
+  .analysis-section {
+    display: none;
+    margin-top: 24px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .analysis-section.visible { display: block; }
+
+  .analysis-header {
+    background: var(--paper-dark);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .analysis-header h3 {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+  }
+
+  .score-badge {
+    margin-left: auto;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 3px 12px;
+    border-radius: 20px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .score-badge.high { background: var(--teal); }
+  .score-badge.mid { background: var(--gold); }
+  .score-badge.low { background: var(--red); }
+
+  .analysis-body {
+    padding: 20px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  .analysis-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .analysis-item .a-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ink-light);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .analysis-item .a-value {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 13px;
+    color: var(--ink);
+    line-height: 1.6;
+  }
+
+  .progress-bar {
+    height: 4px;
+    background: var(--paper-dark);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--teal);
+    border-radius: 2px;
+    transition: width 0.8s ease;
+  }
+
+  /* Suggestions list */
+  .suggestions-list {
+    border-top: 1px solid var(--border);
+    padding: 20px;
+  }
+
+  .suggestions-list h4 {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 14px;
+    color: var(--ink);
+    letter-spacing: 0.06em;
+  }
+
+  .suggestion-item {
+    display: flex;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--border);
+    align-items: flex-start;
+    animation: fadeIn 0.3s ease forwards;
+  }
+
+  .suggestion-item:last-child { border-bottom: none; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .sug-num {
+    width: 22px;
+    height: 22px;
+    background: var(--red);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .sug-content {
+    flex: 1;
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--ink-mid);
+  }
+
+  .sug-content strong {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  /* Copy button */
+  .copy-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 5px 12px;
+    font-size: 11px;
+    cursor: pointer;
+    border-radius: 3px;
+    color: var(--ink-light);
+    transition: all 0.2s;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.03em;
+  }
+
+  .copy-btn:hover {
+    border-color: var(--teal);
+    color: var(--teal);
+  }
+
+  .copy-btn.copied {
+    border-color: var(--teal);
+    color: var(--teal);
+    background: rgba(42,107,107,0.08);
+  }
+
+  /* Error */
+  .error-box {
+    display: none;
+    background: rgba(192,57,43,0.08);
+    border: 1px solid rgba(192,57,43,0.3);
+    border-left: 3px solid var(--red);
+    padding: 12px 16px;
+    border-radius: 0 4px 4px 0;
+    font-size: 13px;
+    color: var(--red);
+    margin-bottom: 16px;
+  }
+
+  .error-box.visible { display: block; }
+
+  /* Footer */
+  footer {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  footer .f-left {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-light);
+    letter-spacing: 0.06em;
+    opacity: 0.7;
+  }
+
+  footer .f-right {
+    font-size: 11px;
+    color: var(--ink-light);
+    opacity: 0.6;
+  }
+
+  /* Streaming text animation */
+  .streaming::after {
+    content: '▋';
+    animation: blink 0.7s step-start infinite;
+    color: var(--red);
+  }
+
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
+  /* Responsive */
+  @media (max-width: 720px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .mode-grid { grid-template-columns: repeat(2, 1fr); }
+    .analysis-body { grid-template-columns: 1fr 1fr; }
+    h1 { font-size: 24px; }
+    .container { padding: 24px 20px 24px 28px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="header-title">
+      <span class="badge">Official Document Assistant · v1.2 · Gemini 2.5 Flash</span>
+      <h1>公文<span>改寫</span>建議工具</h1>
+      <p class="subtitle">貼入公文草稿，AI 分析並給出具體改寫建議</p>
+    </div>
+    <div class="header-stamp">AI 輔助<br>公文品質</div>
+  </header>
+
+  <!-- API Key -->
+  <div class="api-section">
+    <label>🔑 Gemini API 金鑰</label>
+    <input type="password" id="apiKey" placeholder="請輸入 Google Gemini API Key（AIza...）" autocomplete="off">
+  </div>
+
+  <!-- Mode selection -->
+  <div class="options-section">
+    <div class="options-title">改寫方向</div>
+    <div class="mode-grid">
+      <div class="mode-btn active" data-mode="concise">
+        <span class="mode-icon">✂️</span>
+        <span class="mode-name">精簡化</span>
+        <span class="mode-desc">刪冗詞、縮句長</span>
+      </div>
+      <div class="mode-btn" data-mode="formal">
+        <span class="mode-icon">🎖️</span>
+        <span class="mode-name">正式化</span>
+        <span class="mode-desc">強化公文語體</span>
+      </div>
+      <div class="mode-btn" data-mode="logic">
+        <span class="mode-icon">🧩</span>
+        <span class="mode-name">邏輯強化</span>
+        <span class="mode-desc">理清層次結構</span>
+      </div>
+      <div class="mode-btn" data-mode="full">
+        <span class="mode-icon">🔄</span>
+        <span class="mode-name">全面改寫</span>
+        <span class="mode-desc">格式、用語、邏輯</span>
+      </div>
+    </div>
+
+    <div class="add-options">
+      <label class="check-item">
+        <input type="checkbox" id="checkFormat"> 同時檢查格式規範（主旨／說明／辦法）
+      </label>
+      <label class="check-item">
+        <input type="checkbox" id="checkPoliteness"> 檢查稱謂與禮貌用語
+      </label>
+      <label class="check-item">
+        <input type="checkbox" id="showDiff" checked> 標示修改差異
+      </label>
+    </div>
+  </div>
+
+  <!-- Text panels -->
+  <div class="main-grid">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-label">原始公文草稿</span>
+        <span class="panel-meta">INPUT</span>
+      </div>
+      <textarea id="inputText" placeholder="請貼入公文草稿內容…&#10;&#10;例如：&#10;主旨：為辦理本校資安教育訓練事宜，請各單位配合辦理，請查照。&#10;說明：一、本次訓練時間為…&#10;辦法：請各單位於…"></textarea>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header teal">
+        <span class="panel-label">改寫建議結果</span>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <button class="copy-btn" id="copyBtn" style="display:none">複製</button>
+          <span class="panel-meta">OUTPUT</span>
+        </div>
+      </div>
+      <div class="result-panel" id="resultPanel">
+        <div class="result-placeholder" id="placeholder">
+          <span class="icon">📄</span>
+          <p>在左側貼入公文草稿<br>選擇改寫方向後按「開始分析」</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error -->
+  <div class="error-box" id="errorBox"></div>
+
+  <!-- Action bar -->
+  <div class="action-bar">
+    <button class="btn-primary" id="analyzeBtn">
+      <span>✦</span> 開始分析
+    </button>
+    <button class="btn-secondary" id="clearBtn">清除</button>
+    <div class="loading-indicator" id="loading">
+      <div class="spinner"></div>
+      <span>AI 正在分析中…</span>
+    </div>
+    <div class="char-count" id="charCount">0 字</div>
+  </div>
+
+  <!-- Analysis details -->
+  <div class="analysis-section" id="analysisSection">
+    <div class="analysis-header">
+      <h3>📊 品質分析報告</h3>
+      <div class="score-badge" id="totalScore">–</div>
+    </div>
+    <div class="analysis-body" id="analysisBody">
+    </div>
+    <div class="suggestions-list" id="suggestionsList">
+      <h4>🔍 具體修改建議</h4>
+      <div id="suggestionsContainer"></div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="f-left">公文改寫建議工具 · 單機版 · API Key 不會上傳至伺服器</div>
+    <div class="f-right">Powered by Google Gemini</div>
+  </footer>
+
+</div>
+
+<script>
+const MODES = {
+  concise: {
+    name: '精簡化',
+    prompt: '請以「精簡化」為主軸改寫，重點在於：刪除冗詞贅字、縮短過長句子、移除重複表述，同時保持原意完整。'
+  },
+  formal: {
+    name: '正式化',
+    prompt: '請以「正式化」為主軸改寫，重點在於：將口語詞彙替換為正式公文用語（如「請查照」「敬請惠予」「茲因」等）、統一文體風格、符合政府公文慣例。'
+  },
+  logic: {
+    name: '邏輯強化',
+    prompt: '請以「邏輯強化」為主軸改寫，重點在於：釐清主旨與說明的對應關係、確保段落層次分明（一、（一）1.）、使因果關係清晰、移除邏輯跳躍處。'
+  },
+  full: {
+    name: '全面改寫',
+    prompt: '請進行全面改寫，涵蓋：格式規範（主旨/說明/辦法）、精簡用語、正式公文語體、邏輯層次，給出最優化版本。'
+  }
+};
+
+let currentMode = 'concise';
+
+// Mode buttons
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentMode = btn.dataset.mode;
+  });
+});
+
+// Char count
+const inputText = document.getElementById('inputText');
+const charCount = document.getElementById('charCount');
+inputText.addEventListener('input', () => {
+  const len = inputText.value.length;
+  charCount.textContent = `${len} 字`;
+  charCount.style.color = len > 3000 ? '#e74c3c' : '';
+});
+
+// Clear
+document.getElementById('clearBtn').addEventListener('click', () => {
+  inputText.value = '';
+  charCount.textContent = '0 字';
+  document.getElementById('resultPanel').innerHTML = `
+    <div class="result-placeholder" id="placeholder">
+      <span class="icon">📄</span>
+      <p>在左側貼入公文草稿<br>選擇改寫方向後按「開始分析」</p>
+    </div>`;
+  document.getElementById('analysisSection').classList.remove('visible');
+  document.getElementById('copyBtn').style.display = 'none';
+  document.getElementById('errorBox').classList.remove('visible');
+});
+
+// Copy
+document.getElementById('copyBtn').addEventListener('click', function() {
+  const text = document.getElementById('resultPanel').innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    this.textContent = '已複製 ✓';
+    this.classList.add('copied');
+    setTimeout(() => {
+      this.textContent = '複製';
+      this.classList.remove('copied');
+    }, 2000);
+  });
+});
+
+// Main analyze
+document.getElementById('analyzeBtn').addEventListener('click', analyze);
+
+async function analyze() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const text = inputText.value.trim();
+  const checkFormat = document.getElementById('checkFormat').checked;
+  const checkPoliteness = document.getElementById('checkPoliteness').checked;
+  const showDiff = document.getElementById('showDiff').checked;
+
+  const errorBox = document.getElementById('errorBox');
+  errorBox.classList.remove('visible');
+
+  if (!apiKey) {
+    showError('請輸入 Anthropic API Key');
+    return;
+  }
+  if (!text) {
+    showError('請貼入公文草稿內容');
+    return;
+  }
+  if (text.length < 20) {
+    showError('公文內容過短，請貼入完整草稿');
+    return;
+  }
+
+  setLoading(true);
+  document.getElementById('analysisSection').classList.remove('visible');
+  document.getElementById('copyBtn').style.display = 'none';
+
+  const modeInfo = MODES[currentMode];
+
+  let extraChecks = '';
+  if (checkFormat) extraChecks += '\n- 檢查是否包含「主旨」「說明」「辦法」結構，並說明是否完整';
+  if (checkPoliteness) extraChecks += '\n- 檢查收文機關稱謂及禮貌用語是否適當';
+
+  const systemPrompt = `你是台灣政府機關公文審稿專家，精通《文書處理手冊》規定及公文撰寫規範。
+請用繁體中文回覆，並以 JSON 格式輸出分析結果。`;
+
+  const userPrompt = `請分析以下公文草稿，並依指定方向進行改寫建議。
+
+【改寫方向】
+${modeInfo.prompt}
+${extraChecks}
+
+【原始公文草稿】
+${text}
+
+請以下列 JSON 格式回覆（不要加任何 markdown 標記，直接輸出 JSON）：
+{
+  "scores": {
+    "format": {"score": 0-100的數字, "label": "格式規範"},
+    "language": {"score": 0-100的數字, "label": "語言用詞"},
+    "logic": {"score": 0-100的數字, "label": "邏輯結構"}
+  },
+  "total_score": 0-100的數字,
+  "rewritten": "改寫後的完整公文內容",
+  "suggestions": [
+    {"title": "建議標題", "detail": "具體說明"},
+    ...最多5點
+  ],
+  "summary": "一句話總評（20字以內）"
+}`;
+
+  // Display streaming result
+  const resultPanel = document.getElementById('resultPanel');
+  resultPanel.innerHTML = '<div class="streaming" style="color:var(--ink-mid);font-size:13px;">AI 正在分析您的公文</div>';
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          generationConfig: { maxOutputTokens: 8192, temperature: 0.3 }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error?.message || `API 錯誤 ${response.status}`);
+    }
+
+    const data = await response.json();
+    // Gemini 2.5 Flash has thinking mode - parts may contain [thinking, text]
+    // We want the last text part (the actual response)
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const rawText = parts
+      .filter(p => p.text && !p.thought)
+      .map(p => p.text)
+      .join('').trim();
+
+    let result;
+    try {
+      // Strip markdown fences if present, then extract JSON object
+      let cleaned = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      // Try to extract just the JSON object in case there's surrounding text
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) cleaned = jsonMatch[0];
+      result = JSON.parse(cleaned);
+    } catch(e) {
+      // Fallback: display raw text
+      resultPanel.innerHTML = `<pre style="white-space:pre-wrap;font-family:'Noto Sans TC',sans-serif;font-size:13px;line-height:2;">${escapeHtml(rawText)}</pre>`;
+      setLoading(false);
+      document.getElementById('copyBtn').style.display = 'inline-block';
+      return;
+    }
+
+    // Display rewritten text
+    resultPanel.innerHTML = '';
+    const rewrittenText = result.rewritten || '';
+    if (showDiff) {
+      resultPanel.innerHTML = renderDiff(text, rewrittenText);
+    } else {
+      resultPanel.innerHTML = `<div style="white-space:pre-wrap;line-height:2;">${escapeHtml(rewrittenText)}</div>`;
+    }
+
+    document.getElementById('copyBtn').style.display = 'inline-block';
+
+    // Show analysis
+    renderAnalysis(result);
+
+  } catch(e) {
+    showError('分析失敗：' + e.message);
+    resultPanel.innerHTML = `<div class="result-placeholder"><span class="icon">⚠️</span><p>分析過程發生錯誤</p></div>`;
+  } finally {
+    setLoading(false);
+  }
+}
+
+function renderAnalysis(result) {
+  const section = document.getElementById('analysisSection');
+  const scoreEl = document.getElementById('totalScore');
+  const body = document.getElementById('analysisBody');
+  const sugContainer = document.getElementById('suggestionsContainer');
+
+  const total = result.total_score || 0;
+  scoreEl.textContent = `${total} 分`;
+  scoreEl.className = 'score-badge ' + (total >= 80 ? 'high' : total >= 60 ? 'mid' : 'low');
+
+  body.innerHTML = '';
+  if (result.scores) {
+    Object.values(result.scores).forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'analysis-item';
+      div.innerHTML = `
+        <div class="a-label">${item.label}</div>
+        <div class="a-value">${item.score} 分</div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:0%;background:${item.score>=80?'var(--teal)':item.score>=60?'var(--gold)':'var(--red)'}"></div>
+        </div>`;
+      body.appendChild(div);
+      setTimeout(() => {
+        div.querySelector('.progress-fill').style.width = item.score + '%';
+      }, 100);
+    });
+  }
+
+  if (result.summary) {
+    const sumDiv = document.createElement('div');
+    sumDiv.className = 'analysis-item';
+    sumDiv.innerHTML = `<div class="a-label">總評</div><div class="a-value">${escapeHtml(result.summary)}</div>`;
+    body.appendChild(sumDiv);
+  }
+
+  sugContainer.innerHTML = '';
+  if (result.suggestions && result.suggestions.length) {
+    result.suggestions.forEach((s, i) => {
+      const item = document.createElement('div');
+      item.className = 'suggestion-item';
+      item.style.animationDelay = `${i * 0.08}s`;
+      item.innerHTML = `
+        <div class="sug-num">${i+1}</div>
+        <div class="sug-content"><strong>${escapeHtml(s.title)}</strong><br>${escapeHtml(s.detail)}</div>`;
+      sugContainer.appendChild(item);
+    });
+  }
+
+  section.classList.add('visible');
+}
+
+function renderDiff(original, rewritten) {
+  // Simple word-level diff visualization
+  const origWords = original.split(/(\s+)/);
+  const newWords = rewritten.split(/(\s+)/);
+
+  // Just show rewritten with changed parts highlighted (simplified approach)
+  // Find sentences that differ
+  const origSentences = original.split(/([。；\n])/);
+  const newSentences = rewritten.split(/([。；\n])/);
+
+  let html = '';
+  newSentences.forEach((sentence, i) => {
+    if (!sentence.trim()) {
+      html += escapeHtml(sentence);
+      return;
+    }
+    // Check if this sentence exists in original
+    const exists = origSentences.some(s => s.trim() === sentence.trim());
+    if (exists) {
+      html += escapeHtml(sentence);
+    } else {
+      // New/modified sentence
+      html += `<span class="diff-add">${escapeHtml(sentence)}</span>`;
+    }
+  });
+
+  return `<div style="white-space:pre-wrap;line-height:2;">${html}</div>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px dashed var(--border);font-size:11px;color:var(--ink-light);display:flex;gap:16px;">
+      <span><span class="diff-add" style="padding:1px 4px;">新增/修改</span> 標示修改處</span>
+    </div>`;
+}
+
+function showError(msg) {
+  const box = document.getElementById('errorBox');
+  box.textContent = '⚠ ' + msg;
+  box.classList.add('visible');
+  setTimeout(() => box.classList.remove('visible'), 5000);
+}
+
+function setLoading(active) {
+  document.getElementById('analyzeBtn').disabled = active;
+  document.getElementById('clearBtn').disabled = active;
+  document.getElementById('loading').classList.toggle('active', active);
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/\n/g, '<br>');
+}
+</script>
+</body>
+</html>
